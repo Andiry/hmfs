@@ -25,8 +25,7 @@ static struct kmem_cache *hmfs_inode_cachep;	//inode cachep
  * For mount
  */
 enum {
-	Opt_addr = 0,
-	Opt_size,
+	Opt_init = 0,
 	Opt_num_inodes,
 	Opt_mode,
 	Opt_uid,
@@ -43,8 +42,7 @@ enum {
 };
 
 static const match_table_t tokens = {
-	{Opt_addr, "physaddr=%x"},
-	{Opt_size, "init=%s"},
+	{Opt_init, "init"},
 	{Opt_num_inodes, "num_inodes=%u"},
 	{Opt_mode, "mode=%o"},
 	{Opt_uid, "uid=%u"},
@@ -61,20 +59,25 @@ static const match_table_t tokens = {
 };
 
 
-/*
- * ioremap & iounmap
- */
-static inline void *hmfs_ioremap(struct super_block *sb, phys_addr_t phys_addr,
-				ssize_t size)
+static int hmfs_get_block_info(struct super_block *sb, struct hmfs_sb_info *sbi)
 {
-	void __iomem *retval = NULL;
-	retval = ioremap_cache(phys_addr, size);
-	return (void __force *)retval;
-}
+	void *virt_addr = NULL;
+	unsigned long pfn;
+	long size;
 
-static inline int hmfs_iounmap(void *virt_addr)
-{
-	iounmap((void __iomem __force *)virt_addr);
+	if (!sb->s_bdev->bd_disk->fops->direct_access) {
+		printk(KERN_ERR "device does not support DAX\n");
+		return -EINVAL;
+	}
+
+	sbi->s_bdev = sb->s_bdev;
+	size = sb->s_bdev->bd_disk->fops->direct_access(sb->s_bdev,
+					0, &virt_addr, &pfn);
+
+	sbi->virt_addr = virt_addr;
+	sbi->phys_addr = pfn << PAGE_SHIFT;
+	sbi->initsize = size;
+
 	return 0;
 }
 
@@ -87,10 +90,9 @@ static inline int hmfs_iounmap(void *virt_addr)
 static int hmfs_parse_options(char *options, struct hmfs_sb_info *sbi,
 				bool remount)
 {
-	char *p, *rest;
+	char *p;
 	int token;
 	substring_t args[MAX_OPT_ARGS];
-	phys_addr_t phys_addr = 0;
 	int option;
 	bool check_gc_time = false;
 
@@ -107,27 +109,10 @@ static int hmfs_parse_options(char *options, struct hmfs_sb_info *sbi,
 		token = match_token(p, tokens, args);
 
 		switch (token) {
-		case Opt_addr:
+		case Opt_init:
 			if (remount)
 				goto bad_opt;
-			//remount on another area isn't allowed
-			phys_addr = (phys_addr_t) simple_strtoull(args[0].from,
-								NULL, 0);
-			if (phys_addr == 0 || phys_addr == (phys_addr_t) ULLONG_MAX) {
-				goto bad_val;
-			}
-			if (phys_addr & (HMFS_PAGE_SIZE - 1))
-				goto bad_val;
-			sbi->phys_addr = phys_addr;
-			break;
-		case Opt_size:
-			if (remount)
-				goto bad_opt;
-			/* change size isn't allowed */
-			/* memparse() accepts a K/M/G without a digit */
-			if (!isdigit(*args[0].from))
-				goto bad_val;
-			sbi->initsize = memparse(args[0].from, &rest);
+			set_opt(sbi, FORMAT);
 			break;
 		case Opt_uid:
 			if (remount)
@@ -664,10 +649,6 @@ static void hmfs_put_super(struct super_block *sb)
 
 	sb->s_fs_info = NULL;
 	kfree(sbi);
-
-	if (sbi->virt_addr) {
-		hmfs_iounmap(sbi->virt_addr);
-	}
 }
 
 static int hmfs_statfs(struct dentry *dentry, struct kstatfs *buf)
@@ -747,7 +728,6 @@ static int hmfs_fill_super(struct super_block *sb, void *data, int slient)
 	int i = 0;
 	block_t end_addr;
 	block_t ssa_addr, sit_addr;
-	unsigned long long input_size;
 
 	printk(KERN_ERR "##### call %s #####\n", __func__);
 
@@ -767,29 +747,12 @@ static int hmfs_fill_super(struct super_block *sb, void *data, int slient)
 		goto out;
 	}
 
-	input_size = sbi->initsize;
-	if(!input_size){
-		//read from hypothetic super blocks
-		sbi->initsize = HMFS_PAGE_SIZE << 1; 
-	}
-
-	sbi->virt_addr = hmfs_ioremap(sb, sbi->phys_addr, sbi->initsize);
-	if (!sbi->virt_addr) {
+	if (hmfs_get_block_info(sb, sbi)) {
 		retval = -EINVAL;
 		goto out;
 	}
 
-	super = get_valid_super_block(sbi->virt_addr);
-	if (!input_size && super != NULL) {
-		//old super exists, remount
-		sbi->initsize = le64_to_cpu(super->init_size);
-		hmfs_iounmap(sbi->virt_addr);
-		sbi->virt_addr = hmfs_ioremap(sb, sbi->phys_addr, sbi->initsize);
-		if (!sbi->virt_addr) {
-			retval = -EINVAL;
-			goto out;
-		}
-	} else if (input_size) {
+	if (test_opt(sbi, FORMAT)) {
 		hmfs_format(sb);
 	} else if (sbi->mnt_cp_version) {
 		if (!hmfs_readonly(sb)) {
@@ -909,9 +872,6 @@ free_segment_mgr:
 free_cp_mgr:
 	destroy_checkpoint_manager(sbi);
 out:
-	if (sbi->virt_addr) {
-		hmfs_iounmap(sbi->virt_addr);
-	}
 	kfree(sbi);
 	return retval;
 }
@@ -921,7 +881,7 @@ struct dentry *hmfs_mount(struct file_system_type *fs_type, int flags,
 {
 	struct dentry *entry;
 	
-	entry = mount_nodev(fs_type, flags, data, hmfs_fill_super);
+	entry = mount_bdev(fs_type, flags, dev_name, data, hmfs_fill_super);
 	return entry;
 }
 
@@ -929,7 +889,7 @@ struct file_system_type hmfs_fs_type = {
 	.owner = THIS_MODULE,
 	.name = "hmfs",
 	.mount = hmfs_mount,
-	.kill_sb = kill_anon_super,
+	.kill_sb = kill_block_super,
 };
 
 #define AUTHOR_INFO "RADLAB SJTU"

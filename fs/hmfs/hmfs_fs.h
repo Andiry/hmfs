@@ -28,6 +28,8 @@ enum FS_STATE {
 	HMFS_ADD_CP,	/* Do normal checkpoint */
 };
 
+#define	HMFS_SUPER_MAGIC		0xABBF
+
 #define HMFS_MAJOR_VERSION		0
 #define HMFS_MINOR_VERSION		1
 

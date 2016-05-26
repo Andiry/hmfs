@@ -664,7 +664,7 @@ ssize_t hmfs_xip_file_write(struct file * filp, const char __user * buf,
 	struct address_space *mapping = filp->f_mapping;
 	struct inode *inode = filp->f_inode;
 	struct hmfs_sb_info *sbi = HMFS_I_SB(inode);
-	size_t count = 0, ret;
+	size_t count = 0, ret = 0;
 	loff_t pos;
 	int ilock;
 
@@ -676,19 +676,19 @@ ssize_t hmfs_xip_file_write(struct file * filp, const char __user * buf,
 	pos = *ppos;
 	count = len;
 
-	current->backing_dev_info = mapping->backing_dev_info;
+//	current->backing_dev_info = mapping->backing_dev_info;
 
-	ret = generic_write_checks(filp, &pos, &count, S_ISBLK(inode->i_mode));
+//	ret = generic_write_checks(filp, &pos, &count, S_ISBLK(inode->i_mode));
 
-	if (ret)
-		goto out_backing;
+//	if (ret)
+//		goto out_backing;
 
 	if (count == 0)
 		goto out_backing;
 
-	ret = file_remove_suid(filp);
-	if (ret)
-		goto out_backing;
+//	ret = file_remove_suid(filp);
+//	if (ret)
+//		goto out_backing;
 
 	ret = file_update_time(filp);
 	if (ret)

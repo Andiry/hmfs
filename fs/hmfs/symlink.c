@@ -52,11 +52,12 @@ static int hmfs_readlink(struct dentry *dentry, char __user * buffer,
 	inode_read_unlock(inode);
 	if (err || size != 1 || data_blk[0] == NULL)
 		return -ENODATA;
-	return vfs_readlink(dentry, buffer, buflen, data_blk[0]);
+//	return vfs_readlink(dentry, buffer, buflen, data_blk[0]);
+	return readlink_copy(buffer, buflen, data_blk[0]);
 
 }
 
-static void *hmfs_follow_link(struct dentry *dentry, struct nameidata *nd)
+static const char *hmfs_follow_link(struct dentry *dentry, void **cookie)
 {
 	struct inode *inode = dentry->d_inode;
 	void *data_blk[1];
@@ -68,8 +69,8 @@ static void *hmfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	inode_read_unlock(inode);
 	if (err || size != 1 || data_blk[0] == NULL)
 		return ERR_PTR(-ENODATA);
-	nd_set_link(nd, data_blk[0]);
-	return 0;
+//	nd_set_link(nd, data_blk[0]);
+	return data_blk[0];
 }
 
 const struct inode_operations hmfs_symlink_inode_operations = {

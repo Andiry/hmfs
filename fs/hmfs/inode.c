@@ -197,7 +197,7 @@ struct inode *hmfs_iget(struct super_block *sb, unsigned long ino)
 	ret = do_read_inode(inode);
 	if (ret)
 		goto bad_inode;
-	inode->i_mapping->backing_dev_info = &hmfs_backing_dev_info;
+//	inode->i_mapping->backing_dev_info = &hmfs_backing_dev_info;
 
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFREG:
@@ -224,6 +224,6 @@ bad_inode:
 
 //TODO
 const struct address_space_operations hmfs_aops_xip = {
-	.get_xip_mem = NULL,
+//	.get_xip_mem = NULL,
 	.direct_IO = NULL,
 };

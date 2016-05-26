@@ -424,7 +424,8 @@ int hmfs_setattr(struct dentry *dentry, struct iattr *attr)
 			err = PTR_ERR(acl);
 			goto out;
 		}
-		err = posix_acl_chmod(&acl, GFP_KERNEL, inode->i_mode);
+//		err = posix_acl_chmod(&acl, GFP_KERNEL, inode->i_mode);
+		err = posix_acl_chmod(inode, inode->i_mode);
 		err = hmfs_set_acl(inode, acl, ACL_TYPE_ACCESS);
 		if (err || is_inode_flag_set(fi, FI_ACL_MODE)) {
 			inode->i_mode = fi->i_acl_mode;

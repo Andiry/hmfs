@@ -322,8 +322,8 @@ static int hmfs_format(struct super_block *sb)
 	root_node->i.i_uid = cpu_to_le32(sbi->uid.val);
 	root_node->i.i_gid = cpu_to_le32(sbi->gid.val);
 #else
-	root_node->i.i_uid = cpu_to_le32(sbi->uid);
-	root_node->i.i_gid = cpu_to_le32(sbi->gid);
+	root_node->i.i_uid = cpu_to_le32(sbi->uid.val);
+	root_node->i.i_gid = cpu_to_le32(sbi->gid.val);
 #endif
 
 	root_node->i.i_size = cpu_to_le64(HMFS_PAGE_SIZE * 1);
